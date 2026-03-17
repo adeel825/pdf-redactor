@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF PII Redactor</title>
+  <style>
+    /* ── Reset & base ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0a0e1a;
+      --surface:     #111827;
+      --surface2:    #1e2a3a;
+      --border:      #2a3a4e;
+      --accent:      #3b82f6;
+      --accent-dim:  #1d4ed8;
+      --success:     #22c55e;
+      --warning:     #f59e0b;
+      --danger:      #ef4444;
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --radius:      10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header p {
+      color: var(--muted);
+      margin-top: .4rem;
+      font-size: .9rem;
+    }
+    .badge {
+      display: inline-block;
+      background: #166534;
+      color: #ffffff;
+      -webkit-text-fill-color: #ffffff;
+      font-size: .7rem;
+      font-weight: 700;
+      padding: .15rem .55rem;
+      border-radius: 999px;
+      margin-left: .5rem;
+      vertical-align: middle;
+      letter-spacing: .5px;
+    }
+
+    /* ── Card ───────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem 2rem;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    /* ── Drop zone ──────────────────────────────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(59,130,246,.06);
+    }
+    #drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .drop-icon {
+      font-size: 2.4rem;
+      margin-bottom: .6rem;
+      display: block;
+      filter: grayscale(.4);
+    }
+    .drop-label {
+      font-size: 1rem;
+      font-weight: 500;
+    }
+    .drop-sub {
+      font-size: .8rem;
+      color: var(--muted);
+      margin-top: .3rem;
+    }
+    #file-name {
+      margin-top: .9rem;
+      font-size: .85rem;
+      color: var(--accent);
+      font-weight: 500;
+      min-height: 1.2em;
+    }
+
+    /* ── Submit button ──────────────────────────────────────────────── */
+    #submit-btn {
+      display: block;
+      width: 100%;
+      margin-top: 1.2rem;
+      padding: .75rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+    }
+    #submit-btn:hover:not(:disabled) { background: var(--accent-dim); }
+    #submit-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Progress section ───────────────────────────────────────────── */
+    #progress-section { display: none; margin-top: 1.5rem; }
+
+    .stage-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: .5rem;
+    }
+    #stage-label { font-size: .9rem; color: var(--muted); }
+    #pct-label   { font-size: .85rem; font-weight: 600; color: var(--accent); }
+
+    .progress-track {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      border-radius: 999px;
+      transition: width .35s ease;
+    }
+
+    /* Stage steps */
+    .steps {
+      display: flex;
+      justify-content: space-between;
+      margin-top: .9rem;
+      gap: .3rem;
+    }
+    .step {
+      flex: 1;
+      text-align: center;
+      font-size: .68rem;
+      color: var(--muted);
+      padding: .25rem .1rem;
+      border-top: 2px solid var(--border);
+      transition: color .2s, border-color .2s;
+    }
+    .step.active  { color: var(--accent); border-color: var(--accent); }
+    .step.done    { color: var(--success); border-color: var(--success); }
+
+    /* ── Summary table ──────────────────────────────────────────────── */
+    #summary-section { display: none; margin-top: 1.5rem; }
+    #summary-section h3 {
+      font-size: .95rem;
+      font-weight: 600;
+      margin-bottom: .8rem;
+      color: var(--text);
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: .1rem 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      font-size: .85rem;
+    }
+    .sg-row {
+      display: contents;
+    }
+    .sg-row:nth-child(odd) .sg-cell { background: var(--surface2); }
+    .sg-cell {
+      padding: .55rem .9rem;
+    }
+    .sg-cell.count {
+      text-align: right;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .sg-header .sg-cell {
+      background: var(--surface2) !important;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .total-row .sg-cell {
+      border-top: 1px solid var(--border);
+      font-weight: 700;
+    }
+    .total-row .sg-cell.count { color: var(--success); }
+
+    .no-hits {
+      text-align: center;
+      padding: 1.2rem;
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    /* ── Download button ────────────────────────────────────────────── */
+    #download-btn {
+      display: none;
+      width: 100%;
+      margin-top: 1.2rem;
+      padding: .75rem;
+      background: var(--success);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+      transition: background .15s;
+    }
+    #download-btn:hover { background: #16a34a; }
+
+    /* ── Error banner ───────────────────────────────────────────────── */
+    #error-banner {
+      display: none;
+      margin-top: 1.2rem;
+      background: rgba(239,68,68,.12);
+      border: 1px solid rgba(239,68,68,.4);
+      border-radius: var(--radius);
+      padding: .85rem 1rem;
+      color: #fca5a5;
+      font-size: .88rem;
+      line-height: 1.5;
+    }
+    #error-banner strong { color: var(--danger); }
+
+    /* ── Reset link ─────────────────────────────────────────────────── */
+    #reset-btn {
+      display: none;
+      margin-top: 1rem;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: var(--radius);
+      padding: .5rem 1rem;
+      font-size: .85rem;
+      cursor: pointer;
+      width: 100%;
+      transition: border-color .15s, color .15s;
+    }
+    #reset-btn:hover { border-color: var(--text); color: var(--text); }
+
+    /* ── Footer ─────────────────────────────────────────────────────── */
+    footer {
+      margin-top: 2.5rem;
+      text-align: center;
+      font-size: .75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>PDF PII Redactor <span class="badge">OFFLINE</span> <span class="badge" style="background:#1e3a8a;">v1.4.0</span></h1>
+  <p>Permanently removes personally identifiable information from PDF documents.</p>
+</div>
+
+<div class="card">
+
+  <!-- Drop zone -->
+  <div id="drop-zone">
+    <input type="file" id="file-input" accept=".pdf" />
+    <span class="drop-icon">📄</span>
+    <div class="drop-label">Drop a PDF here or click to browse</div>
+    <div class="drop-sub">Max 50 MB · Processed entirely offline</div>
+    <div id="file-name"></div>
+  </div>
+
+  <button id="submit-btn" disabled>Redact PII</button>
+
+  <!-- Progress -->
+  <div id="progress-section">
+    <div class="stage-row">
+      <span id="stage-label">Initialising…</span>
+      <span id="pct-label">0%</span>
+    </div>
+    <div class="progress-track">
+      <div id="progress-bar"></div>
+    </div>
+    <div class="steps">
+      <div class="step" data-stage="Extracting text">Extract</div>
+      <div class="step" data-stage="Regex pass">Regex</div>
+      <div class="step" data-stage="NLP pass">NLP</div>
+      <div class="step" data-stage="Reconciling">Reconcile</div>
+      <div class="step" data-stage="Writing PDF">Write PDF</div>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div id="summary-section">
+    <h3>Redaction Summary</h3>
+    <div id="summary-body"></div>
+  </div>
+
+  <!-- Download -->
+  <a id="download-btn" href="#" download="redacted.pdf">⬇ Download Redacted PDF</a>
+
+  <!-- Error -->
+  <div id="error-banner"></div>
+
+  <!-- Reset -->
+  <button id="reset-btn">↩ Redact another file</button>
+
+</div>
+
+<footer>
+  All processing runs locally · No data leaves your machine · v1.4.0
+</footer>
+
+<script>
+  /* ── Label → display name mapping ────────────────────────────────── */
+  const LABEL_NAMES = {
+    SSN:              'Social Security Number',
+    CREDIT_CARD:      'Credit / Debit Card',
+    PHONE:            'Phone Number',
+    EMAIL:            'Email Address',
+    PERSON:           'Person Name',
+    LOCATION:         'Location / Address',
+    ADDRESS:          'Street Address',
+    DOB:              'Date of Birth',
+    IP_ADDRESS:       'IP Address',
+    DRIVER_LICENSE:   "Driver's License",
+    PASSPORT:         'Passport Number',
+    BANK_ACCOUNT:     'Bank Account Number',
+    ROUTING_NUMBER:   'Routing Number',
+    MRN:              'Medical Record Number',
+    EIN:              'Employer Identification Number (EIN)',
+    // Presidio entity names
+    EMAIL_ADDRESS:    'Email Address',
+    PHONE_NUMBER:     'Phone Number',
+    US_SSN:           'Social Security Number',
+    US_DRIVER_LICENSE:"Driver's License",
+    US_PASSPORT:      'Passport Number',
+    US_BANK_NUMBER:   'Bank Account Number',
+    MEDICAL_LICENSE:  'Medical Record Number',
+    NRP:              'Person Name',
+    US_ITIN:          'ITIN',
+    IBAN_CODE:        'IBAN / Account',
+  };
+
+  /* ── DOM refs ─────────────────────────────────────────────────────── */
+  const dropZone      = document.getElementById('drop-zone');
+  const fileInput     = document.getElementById('file-input');
+  const fileNameEl    = document.getElementById('file-name');
+  const submitBtn     = document.getElementById('submit-btn');
+  const progressSec   = document.getElementById('progress-section');
+  const stageLabel    = document.getElementById('stage-label');
+  const pctLabel      = document.getElementById('pct-label');
+  const progressBar   = document.getElementById('progress-bar');
+  const stepEls       = [...document.querySelectorAll('.step')];
+  const summarySec    = document.getElementById('summary-section');
+  const summaryBody   = document.getElementById('summary-body');
+  const downloadBtn   = document.getElementById('download-btn');
+  const errorBanner   = document.getElementById('error-banner');
+  const resetBtn      = document.getElementById('reset-btn');
+
+  let selectedFile = null;
+  let currentJobId = null;
+  let eventSource  = null;
+
+  /* ── Drag-and-drop ────────────────────────────────────────────────── */
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length) setFile(files[0]);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) setFile(fileInput.files[0]);
+  });
+
+  function setFile(file) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      showError('Only PDF files are accepted.');
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      showError('File exceeds the 50 MB limit.');
+      return;
+    }
+    selectedFile = file;
+    fileNameEl.textContent = `${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
+    submitBtn.disabled = false;
+    hideError();
+  }
+
+  /* ── Submit ───────────────────────────────────────────────────────── */
+  submitBtn.addEventListener('click', () => {
+    if (!selectedFile) return;
+    uploadFile(selectedFile);
+  });
+
+  async function uploadFile(file) {
+    submitBtn.disabled = true;
+    dropZone.style.pointerEvents = 'none';
+    progressSec.style.display = 'block';
+    hideError();
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    let res;
+    try {
+      res = await fetch('/upload', { method: 'POST', body: fd });
+    } catch (err) {
+      showError('Upload failed: ' + err.message);
+      return;
+    }
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      showError(data.error || 'Upload failed');
+      return;
+    }
+
+    currentJobId = data.job_id;
+    startSSE(currentJobId);
+  }
+
+  /* ── SSE progress stream ──────────────────────────────────────────── */
+  function startSSE(jobId) {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource(`/progress/${jobId}`);
+
+    eventSource.onmessage = e => {
+      const d = JSON.parse(e.data);
+      updateProgress(d);
+      if (d.status === 'complete' || d.status === 'error') {
+        eventSource.close();
+        eventSource = null;
+      }
+    };
+    eventSource.onerror = () => {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      showError('Lost connection to server.');
+    };
+  }
+
+  /* ── Update UI from SSE payload ──────────────────────────────────── */
+  const STAGE_ORDER = ['Extracting text','Regex pass','NLP pass','Reconciling','Writing PDF','Complete'];
+
+  function updateProgress(d) {
+    const pct = Math.min(d.progress || 0, 100);
+    progressBar.style.width = pct + '%';
+    pctLabel.textContent    = pct + '%';
+    stageLabel.textContent  = d.stage || '';
+
+    // Highlight steps
+    const curIdx = STAGE_ORDER.indexOf(d.stage);
+    stepEls.forEach((el, i) => {
+      const stepStage = el.dataset.stage;
+      const stepIdx   = STAGE_ORDER.indexOf(stepStage);
+      el.classList.toggle('done',   stepIdx < curIdx);
+      el.classList.toggle('active', stepIdx === curIdx);
+    });
+
+    if (d.status === 'complete') {
+      stepEls.forEach(el => el.classList.replace('active','done') || el.classList.add('done'));
+      renderSummary(d.stats || {});
+      downloadBtn.href = `/download/${currentJobId}`;
+      downloadBtn.style.display = 'block';
+      summarySec.style.display = 'block';
+      resetBtn.style.display   = 'block';
+    }
+
+    if (d.status === 'error') {
+      showError(d.error || 'An unknown error occurred.');
+      resetBtn.style.display = 'block';
+    }
+  }
+
+  /* ── Summary table ────────────────────────────────────────────────── */
+  function renderSummary(stats) {
+    const total = Object.values(stats).reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      summaryBody.innerHTML = '<div class="no-hits">✔ No PII detected in this document.</div>';
+      return;
+    }
+
+    // Merge duplicate label names (e.g. PERSON + NRP both → "Person Name")
+    const merged = {};
+    for (const [label, count] of Object.entries(stats)) {
+      const name = LABEL_NAMES[label] || label;
+      merged[name] = (merged[name] || 0) + count;
+    }
+
+    const rows = Object.entries(merged)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count], i) => `
+        <div class="sg-row" style="${i%2===0?'':''}">
+          <div class="sg-cell">${name}</div>
+          <div class="sg-cell count">${count}</div>
+        </div>`)
+      .join('');
+
+    summaryBody.innerHTML = `
+      <div class="summary-grid">
+        <div class="sg-row sg-header">
+          <div class="sg-cell">PII Category</div>
+          <div class="sg-cell count">Items</div>
+        </div>
+        ${rows}
+        <div class="sg-row total-row">
+          <div class="sg-cell">Total redactions</div>
+          <div class="sg-cell count">${total}</div>
+        </div>
+      </div>`;
+  }
+
+  /* ── Error display ────────────────────────────────────────────────── */
+  function showError(msg) {
+    errorBanner.innerHTML = `<strong>Error:</strong> ${msg}`;
+    errorBanner.style.display = 'block';
+    submitBtn.disabled = false;
+    dropZone.style.pointerEvents = '';
+  }
+  function hideError() {
+    errorBanner.style.display = 'none';
+  }
+
+  /* ── Reset ────────────────────────────────────────────────────────── */
+  resetBtn.addEventListener('click', () => {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    selectedFile   = null;
+    currentJobId   = null;
+    fileNameEl.textContent  = '';
+    fileInput.value         = '';
+    submitBtn.disabled      = true;
+    progressBar.style.width = '0%';
+    pctLabel.textContent    = '0%';
+    stageLabel.textContent  = '';
+    stepEls.forEach(el => { el.classList.remove('active','done'); });
+    progressSec.style.display  = 'none';
+    summarySec.style.display   = 'none';
+    downloadBtn.style.display  = 'none';
+    resetBtn.style.display     = 'none';
+    dropZone.style.pointerEvents = '';
+    hideError();
+  });
+</script>
+</body>
+</html>

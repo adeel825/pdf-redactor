@@ -65,6 +65,11 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
+# PDF Redactor — runtime data directories and uploaded/output files
+uploads/
+outputs/
+*.pdf
+
 # Scrapy stuff:
 .scrapy
 
